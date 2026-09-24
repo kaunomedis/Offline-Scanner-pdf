@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Printing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace OfflineScan
@@ -26,6 +27,25 @@ namespace OfflineScan
         private readonly PictureBox _preview = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.DimGray };
         private readonly ToolStripStatusLabel _status = new() { Text = "Pasiruošęs" };
 
+        private static readonly int[] DefaultDpi = { 150, 200, 300, 600 };
+        private static readonly ColorMode[] AllModes = { ColorMode.Color, ColorMode.Gray, ColorMode.BlackWhite };
+        private ScannerCaps? _caps;
+        private FlowLayoutPanel? _top, _bottom;
+        private bool _busy;
+
+        /// <summary>Spalvų režimo įrašas sąraše.</summary>
+        private sealed class ModeItem
+        {
+            public ColorMode Mode { get; }
+            public ModeItem(ColorMode mode) => Mode = mode;
+            public override string ToString() => Mode switch
+            {
+                ColorMode.Color => "Spalvotai",
+                ColorMode.Gray => "Pilkai",
+                _ => "Nespalvotai (tekstas)"
+            };
+        }
+
         public MainForm()
         {
             Text = "Skenavimas į PDF (be interneto)";
@@ -33,10 +53,9 @@ namespace OfflineScan
             Height = 780;
             StartPosition = FormStartPosition.CenterScreen;
 
-            _cbDpi.Items.AddRange(new object[] { 150, 200, 300, 600 });
-            _cbDpi.SelectedItem = 300;
-            _cbMode.Items.AddRange(new object[] { "Spalvotai", "Pilkai", "Nespalvotai (tekstas)" });
-            _cbMode.SelectedIndex = 1;
+            FillDpi(DefaultDpi);
+            FillModes(AllModes);
+            _cbScanner.SelectedIndexChanged += (_, _) => LoadCapabilities();
             _cbSize.Items.AddRange(new object[] { "A4", "Letter", "Visas plotas" });
             _cbSize.SelectedIndex = 0;
 
@@ -53,7 +72,7 @@ namespace OfflineScan
             var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6) };
             top.Controls.AddRange(new Control[]
             {
-                Lbl("Skeneris:"), _cbScanner, Btn("↻", (_, _) => LoadScanners()),
+                Lbl("Skeneris:"), _cbScanner, Btn("↻", (_, _) => RefreshScanners()),
                 Lbl("DPI:"), _cbDpi, Lbl("Režimas:"), _cbMode, Lbl("Formatas:"), _cbSize, _chkFeeder,
                 Btn("Skenuoti", (_, _) => DoScan()),
                 Btn("Skenuoti per tvarkyklės langą", (_, _) => DoScanDialog()),
@@ -61,6 +80,8 @@ namespace OfflineScan
             });
 
             var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(6) };
+            _top = top;
+            _bottom = bottom;
             bottom.Controls.AddRange(new Control[]
             {
                 Btn("▲ Aukštyn", (_, _) => MoveSelected(-1)),
@@ -100,13 +121,29 @@ namespace OfflineScan
 
         // ---------- skenavimas ----------
 
-        private void LoadScanners()
+        /// <summary>„↻“: atleidžia WIA objektus, iš naujo surenka skenerius ir jų galimybes.</summary>
+        private void RefreshScanners()
+        {
+            string? selectedId = (_cbScanner.SelectedItem as ScannerInfo)?.Id;
+            ScanLog.Write("UI: atnaujinti skenerius");
+            _caps = null;
+            Cursor = Cursors.WaitCursor;
+            try { WiaScanner.ResetSession(); }
+            finally { Cursor = Cursors.Default; }
+            LoadScanners(selectedId);
+        }
+
+        private void LoadScanners(string? preferId = null)
         {
             _cbScanner.Items.Clear();
             RunBusy(() =>
             {
                 foreach (var s in WiaScanner.ListScanners()) _cbScanner.Items.Add(s);
-                if (_cbScanner.Items.Count > 0) _cbScanner.SelectedIndex = 0;
+                // Paliekame tą patį skenerį, jei jis vis dar yra sąraše
+                int select = 0;
+                for (int i = 0; i < _cbScanner.Items.Count; i++)
+                    if (preferId != null && ((ScannerInfo)_cbScanner.Items[i]).Id == preferId) { select = i; break; }
+                if (_cbScanner.Items.Count > 0) _cbScanner.SelectedIndex = select;
 
                 int maxWidth = _cbScanner.Width;
                 foreach (var item in _cbScanner.Items)
@@ -115,9 +152,8 @@ namespace OfflineScan
 
 
 
-                SetStatus(_cbScanner.Items.Count == 0
-                    ? "Skenerių nerasta. Patikrinkite, ar skeneris įjungtas ir matomas Windows nustatymuose."
-                    : $"Rasta skenerių: {_cbScanner.Items.Count}");
+                if (_cbScanner.Items.Count == 0)
+                    SetStatus("Skenerių nerasta. Patikrinkite, ar skeneris įjungtas ir matomas Windows nustatymuose.");
             });
         }
 
@@ -128,7 +164,7 @@ namespace OfflineScan
                 MessageBox.Show(this, "Pasirinkite skenerį.", "Skenavimas");
                 return;
             }
-            var mode = _cbMode.SelectedIndex switch { 0 => ColorMode.Color, 1 => ColorMode.Gray, _ => ColorMode.BlackWhite };
+            var mode = (_cbMode.SelectedItem as ModeItem)?.Mode ?? ColorMode.Gray;
             SizeF? size = _cbSize.SelectedIndex switch { 0 => new SizeF(8.27f, 11.69f), 1 => new SizeF(8.5f, 11f), _ => null };
             int dpi = (int)_cbDpi.SelectedItem!;
             ScanLog.Write($"UI: skenuoti, skeneris=\"{scanner.Name}\", DPI={dpi}, režimas={_cbMode.SelectedItem}, " +
@@ -136,8 +172,73 @@ namespace OfflineScan
             RunBusy(() =>
             {
                 SetStatus("Skenuojama…");
-                AddPages(WiaScanner.Scan(scanner.Id, dpi, mode, _chkFeeder.Checked, size));
+                var result = WiaScanner.Scan(scanner.Id, dpi, mode, _chkFeeder.Checked, size,
+                                             _caps?.SupportsPng == true, s => SetStatus(s));
+                AddPages(result.Pages);
+                if (result.Warnings.Count > 0)
+                {
+                    ScanLog.Write("Parodyta vartotojui: " + string.Join(" | ", result.Warnings));
+                    MessageBox.Show(this, string.Join("\n\n", result.Warnings), "Skenavimas",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             });
+        }
+
+        /// <summary>Pasirinkus skenerį, DPI ir režimų sąrašai užpildomi tuo, ką jis palaiko.</summary>
+        private void LoadCapabilities()
+        {
+            if (_cbScanner.SelectedItem is not ScannerInfo scanner) return;
+            Cursor = Cursors.WaitCursor;
+            try
+            {
+                SetStatus("Tikrinamos skenerio galimybės…");
+                _caps = WiaScanner.GetCapabilities(scanner.Id);
+                FillDpi(_caps.Resolutions);
+                FillModes(_caps.Modes.Count > 0 ? _caps.Modes : AllModes);
+                _chkFeeder.Enabled = _caps.HasFeeder;
+                if (!_caps.HasFeeder) _chkFeeder.Checked = false;
+                SetStatus($"{scanner.Name}: DPI {string.Join(", ", _cbDpi.Items.Cast<object>())}" +
+                          (_caps.HasFeeder ? ", yra tiektuvas (ADF)" : ", tiektuvo nėra"));
+            }
+            catch (Exception ex)
+            {
+                // Neblokuojame darbo: paliekame numatytuosius sąrašus
+                ScanLog.Error("skenerio galimybės", ex);
+                _caps = null;
+                FillDpi(DefaultDpi);
+                FillModes(AllModes);
+                _chkFeeder.Enabled = true;
+                SetStatus($"Nepavyko nuskaityti skenerio galimybių: {WiaScanner.Describe(ex)}");
+            }
+            finally { Cursor = Cursors.Default; }
+        }
+
+        private void FillDpi(IEnumerable<int> values)
+        {
+            int previous = _cbDpi.SelectedItem is int p ? p : 300;
+            _cbDpi.Items.Clear();
+            foreach (int v in values) _cbDpi.Items.Add(v);
+            if (_cbDpi.Items.Count == 0) foreach (int v in DefaultDpi) _cbDpi.Items.Add(v);
+
+            // parenkam artimiausią buvusiai reikšmei
+            int best = 0, bestDiff = int.MaxValue;
+            for (int i = 0; i < _cbDpi.Items.Count; i++)
+            {
+                int diff = Math.Abs((int)_cbDpi.Items[i] - previous);
+                if (diff < bestDiff) { bestDiff = diff; best = i; }
+            }
+            _cbDpi.SelectedIndex = best;
+        }
+
+        private void FillModes(IEnumerable<ColorMode> modes)
+        {
+            ColorMode previous = (_cbMode.SelectedItem as ModeItem)?.Mode ?? ColorMode.Gray;
+            _cbMode.Items.Clear();
+            foreach (var m in modes) _cbMode.Items.Add(new ModeItem(m));
+            int index = 0;
+            for (int i = 0; i < _cbMode.Items.Count; i++)
+                if (((ModeItem)_cbMode.Items[i]).Mode == previous) { index = i; break; }
+            if (_cbMode.Items.Count > 0) _cbMode.SelectedIndex = index;
         }
 
         private void DoDiagnose()
@@ -297,7 +398,17 @@ namespace OfflineScan
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
             RunBusy(() =>
             {
+                ScanLog.Section("PDF IŠSAUGOJIMAS");
+                ScanLog.Write($"Failas: {dlg.FileName}, puslapių: {_pages.Count}, JPEG kokybė: {_numQuality.Value}");
+                for (int i = 0; i < _pages.Count; i++)
+                {
+                    var pg = _pages[i];
+                    ScanLog.Write($"  {i + 1} psl.: {pg.Image.Width} x {pg.Image.Height} px, {pg.Dpi:0.#} DPI → " +
+                                  $"{pg.Image.Width / pg.Dpi * 25.4:0} x {pg.Image.Height / pg.Dpi * 25.4:0} mm");
+                }
                 PdfWriter.Save(dlg.FileName, _pages, (long)_numQuality.Value);
+                long size = new FileInfo(dlg.FileName).Length;
+                ScanLog.Write($"Išsaugota, failo dydis {size / 1024.0:0} KB");
                 SetStatus($"Išsaugota: {dlg.FileName} ({_pages.Count} psl.)");
             });
         }
@@ -328,6 +439,12 @@ namespace OfflineScan
 
         private void RunBusy(Action action)
         {
+            // Kol vyksta darbas (pvz., skenavimas iš tiektuvo), mygtukai išjungti,
+            // kad nebūtų paleistas antras veiksmas tuo pačiu metu.
+            if (_busy) return;
+            _busy = true;
+            if (_top != null) _top.Enabled = false;
+            if (_bottom != null) _bottom.Enabled = false;
             Cursor = Cursors.WaitCursor;
             try { action(); }
             catch (Exception ex)
@@ -336,7 +453,13 @@ namespace OfflineScan
                 SetStatus("Klaida.");
                 MessageBox.Show(this, WiaScanner.Describe(ex), "Klaida", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            finally { Cursor = Cursors.Default; }
+            finally
+            {
+                Cursor = Cursors.Default;
+                if (_top != null) _top.Enabled = true;
+                if (_bottom != null) _bottom.Enabled = true;
+                _busy = false;
+            }
         }
 
         private void SetStatus(string text) { _status.Text = text; Application.DoEvents(); }

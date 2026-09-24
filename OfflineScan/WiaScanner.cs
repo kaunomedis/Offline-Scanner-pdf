@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace OfflineScan
@@ -17,6 +18,24 @@ namespace OfflineScan
         public override string ToString() => Name;
     }
 
+    /// <summary>Skenavimo rezultatas: lapai ir pastabos vartotojui.</summary>
+    public sealed class ScanResult
+    {
+        public List<ScannedPage> Pages { get; } = new();
+        public List<string> Warnings { get; } = new();
+        public int ActualDpi { get; set; }
+    }
+
+    /// <summary>Ką skeneris palaiko (nuskaitoma iš tvarkyklės).</summary>
+    public sealed class ScannerCaps
+    {
+        public List<int> Resolutions { get; } = new();
+        public List<ColorMode> Modes { get; } = new();
+        public bool HasFeeder { get; set; }
+        public bool HasFlatbed { get; set; } = true;
+        public bool SupportsPng { get; set; }
+    }
+
     /// <summary>
     /// Skenavimas per Windows Image Acquisition (WIA 2.0). WIA yra Windows dalis,
     /// jokio interneto, paskyrų ar gamintojo programų nereikia. Naudojamas vėlyvasis
@@ -26,6 +45,7 @@ namespace OfflineScan
     public static class WiaScanner
     {
         private const string FormatBmp = "{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}";
+        private const string FormatPng = "{B96B3CAF-0728-11D3-9D7B-0000F81EF32E}";
         private const int ScannerDeviceType = 1;
 
         // WIA savybių ID
@@ -41,6 +61,9 @@ namespace OfflineScan
         private const int IPA_ITEM_NAME = 4098;
         private const int IPA_DATATYPE = 4103;
         private const int IPA_DEPTH = 4104;
+        private const int IPA_FORMAT = 4106;
+        private const int IPA_COMPRESSION = 4107;
+        private const int WIA_COMPRESSION_PNG = 8;
         private const int IPS_CUR_INTENT = 6146;
         private const int IPS_XRES = 6147;
         private const int IPS_YRES = 6148;
@@ -55,7 +78,7 @@ namespace OfflineScan
             3074, 3075, 3076, 3077,       // stiklo ir tiektuvo dydis
             3086, 3087, 3088, 3096,       // tiektuvo galimybės, būsena, šaltinis, lapų skaičius
             3097, 3098, 3099,             // puslapio dydis, plotis, aukštis (WIA 2.0)
-            4103, 4104,                   // duomenų tipas, bitų gylis
+            4103, 4104, 4106, 4107,       // duomenų tipas, bitų gylis, formatas, suspaudimas
             6146, 6147, 6148,             // intent, DPI X, DPI Y
             6149, 6150, 6151, 6152        // plotas: X, Y, plotis, aukštis (px)
         };
@@ -142,16 +165,94 @@ namespace OfflineScan
             }
         }
 
+        /// <summary>
+        /// Atleidžia visus programos laikomus WIA objektus, kad kitas prisijungimas prasidėtų švariai.
+        /// Windows WIA paslaugos ir tvarkyklių perkrauti negalime (tam reikia administratoriaus teisių).
+        /// </summary>
+        public static void ResetSession()
+        {
+            ScanLog.Section("WIA SESIJOS ATNAUJINIMAS");
+            for (int i = 0; i < 2; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            try { System.Runtime.InteropServices.Marshal.CleanupUnusedObjectsInCurrentContext(); } catch { }
+            ScanLog.Write("WIA objektai atleisti");
+        }
+
+        /// <summary>Nuskaito, kokius DPI, spalvų režimus ir šaltinius palaiko skeneris.</summary>
+        public static ScannerCaps GetCapabilities(string deviceId)
+        {
+            ScanLog.Section("SKENERIO GALIMYBĖS");
+            var caps = new ScannerCaps();
+            dynamic? info = FindDeviceInfo(deviceId);
+            if (info == null) throw new InvalidOperationException("Skeneris nerastas. Paspauskite ↻ ir bandykite dar kartą.");
+            string scannerName = Convert.ToString(GetProp(info.Properties, DIP_DEV_NAME)) ?? "?";
+            ScanLog.Write($"Skeneris: {scannerName}");
+            try
+            {
+                dynamic device = Retry<object>("Connect", () => info.Connect());
+                dynamic item = device.Items[1];
+
+                object? handling = GetProp(device.Properties, DPS_DOCUMENT_HANDLING_CAPABILITIES);
+                int h = ToIntOr(handling, -1);
+                if (h >= 0)
+                {
+                    caps.HasFeeder = (h & 1) != 0;
+                    caps.HasFlatbed = (h & 2) != 0;
+                }
+                else
+                {
+                    caps.HasFeeder = FindProp(device.Properties, DPS_DOCUMENT_HANDLING_SELECT) != null;
+                }
+
+                List<int> res = ReadAllowedInts(item.Properties, IPS_XRES, new[] { 75, 100, 150, 200, 240, 300, 400, 600, 1200 });
+                caps.Resolutions.AddRange(res);
+
+                List<int> types = ReadAllowedInts(item.Properties, IPA_DATATYPE, new[] { 0, 2, 3 });
+                if (types.Count == 0 || types.Contains(3)) caps.Modes.Add(ColorMode.Color);
+                if (types.Count == 0 || types.Contains(2)) caps.Modes.Add(ColorMode.Gray);
+                if (types.Count == 0 || types.Contains(0)) caps.Modes.Add(ColorMode.BlackWhite);
+                caps.SupportsPng = (bool)ListContains(item.Properties, IPA_COMPRESSION, WIA_COMPRESSION_PNG);
+
+                ScanLog.Write($"DPI: {(caps.Resolutions.Count > 0 ? string.Join(", ", caps.Resolutions) : "nežinoma")}; " +
+                              $"režimai: {string.Join(", ", caps.Modes)}; " +
+                              $"stiklas: {(caps.HasFlatbed ? "taip" : "ne")}; tiektuvas: {(caps.HasFeeder ? "taip" : "ne")}; " +
+                              $"suspaustas perdavimas (PNG): {(caps.SupportsPng ? "taip" : "ne")}");
+                return caps;
+            }
+            finally
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+        }
+
         /// <param name="pageInches">Skenavimo plotas coliais; null = visas skenerio plotas.</param>
-        public static List<ScannedPage> Scan(string deviceId, int dpi, ColorMode mode, bool useFeeder, SizeF? pageInches)
+        /// <param name="feederPng">Ar tiektuvo skenavimui per WIA 2.0 prašyti PNG (skeneris jį palaiko).</param>
+        /// <param name="status">Eigos pranešimai būsenos juostai (tik WIA 2.0 tiektuvui).</param>
+        public static ScanResult Scan(string deviceId, int dpi, ColorMode mode, bool useFeeder, SizeF? pageInches,
+                                      bool feederPng = false, Action<string>? status = null)
         {
             ScanLog.Section("SKENAVIMAS");
             ScanLog.Write($"Parametrai: DPI={dpi}, režimas={mode}, šaltinis={(useFeeder ? "tiektuvas (ADF)" : "stiklas")}, " +
                           $"formatas={(pageInches.HasValue ? $"{pageInches.Value.Width:0.##} x {pageInches.Value.Height:0.##} in" : "visas plotas")}, " +
                           $"ID={deviceId}");
 
+            // Tiektuvas: pirmiausia WIA 2.0 (visi lapai vienu darbu). Jei šiam skeneriui
+            // WIA 2.0 paruošti nepavyksta, naudojamas senasis būdas (patikimai tik pirmas lapas).
+            if (useFeeder)
+            {
+                ScanResult? viaWia2 = WiaAdf2.TryScanFeeder(deviceId, dpi, mode, pageInches, feederPng, status);
+                if (viaWia2 != null) return viaWia2;
+                ScanLog.Section("SKENAVIMAS (SENASIS BŪDAS)");
+                ScanLog.Write("WIA 2.0 tiektuvo paruošti nepavyko, naudojamas senasis būdas");
+            }
+
             string stage = "skenerio paieška";
-            var pages = new List<ScannedPage>();
+            var result = new ScanResult();
+            var pages = result.Pages;
             var sw = Stopwatch.StartNew();
             try
             {
@@ -174,10 +275,19 @@ namespace OfflineScan
                 // Šaltinis: tiektuvas (ADF) ar stiklas
                 stage = "šaltinio nustatymas";
                 SetProp(device.Properties, DPS_DOCUMENT_HANDLING_SELECT, useFeeder ? 1 : 2, "skeneris");
-                if (useFeeder) SetProp(device.Properties, DPS_PAGES, 1, "skeneris");
+                // Visada aiškiai: 1 lapas per perdavimą.
+                // Pages = 0 („visi lapai“) senoji WIA sąsaja atmeta pradedant skenuoti (0x80070057);
+                // patikrinta su Lexmark MX410de, HP LaserJet Pro M225dw ir HP LaserJet M426fdn.
+                SetProp(device.Properties, DPS_PAGES, 1, "skeneris");
 
-                // Spalvos režimas
+                // Spalvos režimas (tik jei skeneris jį palaiko)
                 stage = "spalvos režimo nustatymas";
+                if (mode == ColorMode.BlackWhite && !(bool)ListAllows(item.Properties, IPA_DATATYPE, 0))
+                {
+                    ScanLog.Write("Nespalvotas režimas nepalaikomas, naudojamas pilkas");
+                    result.Warnings.Add("Skeneris nepalaiko nespalvoto režimo, todėl nuskenuota pilkai.");
+                    mode = ColorMode.Gray;
+                }
                 (int intent, int dataType, int depth) = mode switch
                 {
                     ColorMode.Color => (1, 3, 24),
@@ -188,12 +298,26 @@ namespace OfflineScan
                 SetProp(item.Properties, IPA_DATATYPE, dataType, "elementas");
                 SetProp(item.Properties, IPA_DEPTH, depth, "elementas");
 
-                // Raiška (būtina nustatyti PRIEŠ plotą)
+                // Raiška (būtina nustatyti PRIEŠ plotą). Toliau naudojama tik ta reikšmė,
+                // kurią tvarkyklė iš tikrųjų paliko, nes nepalaikomą DPI ji tyliai atmeta.
                 stage = "DPI nustatymas";
                 SetProp(item.Properties, IPS_XRES, dpi, "elementas");
                 SetProp(item.Properties, IPS_YRES, dpi, "elementas");
+                object? xr = GetProp(item.Properties, IPS_XRES);
+                object? yr = GetProp(item.Properties, IPS_YRES);
+                int actualDpi = ToIntOr(xr, dpi);
+                int actualDpiY = ToIntOr(yr, actualDpi);
+                if (actualDpi <= 0) actualDpi = dpi;
+                if (actualDpi != dpi)
+                {
+                    ScanLog.Write($"DĖMESIO: tvarkyklė paliko {actualDpi} DPI vietoj prašyto {dpi}. Plotas ir PDF skaičiuojami pagal {actualDpi} DPI");
+                    result.Warnings.Add($"Skeneris nepalaiko {dpi} DPI, todėl nuskenuota {actualDpi} DPI.");
+                }
+                if (actualDpiY != actualDpi)
+                    ScanLog.Write($"DĖMESIO: vertikalus DPI ({actualDpiY}) skiriasi nuo horizontalaus ({actualDpi})");
+                result.ActualDpi = actualDpi;
 
-                // Skenavimo plotas
+                // Skenavimo plotas pagal TIKRĄJĮ DPI
                 stage = "ploto skaičiavimas";
                 double bedW = ToDouble(GetProp(device.Properties, useFeeder ? DPS_HORIZONTAL_SHEET_FEED_SIZE : DPS_HORIZONTAL_BED_SIZE)) / 1000.0;
                 double bedH = ToDouble(GetProp(device.Properties, useFeeder ? DPS_VERTICAL_SHEET_FEED_SIZE : DPS_VERTICAL_BED_SIZE)) / 1000.0;
@@ -203,9 +327,9 @@ namespace OfflineScan
                     wIn = bedW > 0 ? Math.Min(pageInches.Value.Width, bedW) : pageInches.Value.Width;
                     hIn = bedH > 0 ? Math.Min(pageInches.Value.Height, bedH) : pageInches.Value.Height;
                 }
-                int expectedW = (int)(wIn * dpi), expectedH = (int)(hIn * dpi);
+                int expectedW = (int)(wIn * actualDpi), expectedH = (int)(hIn * actualDpi);
                 ScanLog.Write($"Plotas ({(useFeeder ? "tiektuvas" : "stiklas")}): skeneris praneša {bedW:0.###} x {bedH:0.###} in; " +
-                              $"naudojama {wIn:0.###} x {hIn:0.###} in → {expectedW} x {expectedH} px");
+                              $"naudojama {wIn:0.###} x {hIn:0.###} in → {expectedW} x {expectedH} px prie {actualDpi} DPI");
 
                 stage = "ploto nustatymas";
                 SetProp(item.Properties, IPS_XPOS, 0, "elementas");
@@ -213,22 +337,34 @@ namespace OfflineScan
                 SetPropClamped(item.Properties, IPS_XEXTENT, expectedW, "elementas");
                 SetPropClamped(item.Properties, IPS_YEXTENT, expectedH, "elementas");
 
+                // Perdavimo formatas: suspaustas PNG, jei skeneris jį aiškiai palaiko (daug greičiau per tinklą)
+                stage = "perdavimo formato nustatymas";
+                bool usePng = false;
+                if ((bool)ListContains(item.Properties, IPA_COMPRESSION, WIA_COMPRESSION_PNG))
+                {
+                    usePng = SetProp(item.Properties, IPA_COMPRESSION, WIA_COMPRESSION_PNG, "elementas");
+                    if (usePng) SetProp(item.Properties, IPA_FORMAT, FormatPng, "elementas");
+                }
+                ScanLog.Write($"Perdavimo formatas: {(usePng ? "PNG (suspaustas)" : "BMP (nesuspaustas)")}");
+
                 LogKeyProps("Skeneris PO nustatymų", device.Properties);
                 LogKeyProps("Elementas PO nustatymų", item.Properties);
 
                 dynamic dialog = Create("WIA.CommonDialog");
+                const int MaxPages = 500; // apsauga nuo begalinio ciklo
                 int n = 0;
-                while (true)
+                while (n < MaxPages)
                 {
                     n++;
                     stage = $"perdavimas #{n}";
                     if (useFeeder) ScanLog.Write($"Prieš lapą #{n}: " + (string)FeederStatus(device.Properties));
                     ScanLog.Write($"Perdavimas #{n} pradėtas");
                     sw.Restart();
+                    string format = usePng ? FormatPng : FormatBmp;
                     dynamic? img;
                     try
                     {
-                        img = Retry<object?>($"ShowTransfer #{n}", () => dialog.ShowTransfer(item, FormatBmp, false));
+                        img = Retry<object?>($"ShowTransfer #{n}", () => dialog.ShowTransfer(item, format, false));
                     }
                     catch (Exception ex) when (HResult(ex) == WIA_ERROR_PAPER_EMPTY)
                     {
@@ -236,23 +372,52 @@ namespace OfflineScan
                         if (pages.Count == 0) throw new InvalidOperationException("Tiektuve (ADF) nėra lapų.");
                         break; // visi lapai iš tiektuvo nuskenuoti
                     }
+                    catch (Exception ex) when (usePng && pages.Count == 0 && sw.ElapsedMilliseconds < 3000)
+                    {
+                        // Tvarkyklė PNG deklaruoja, bet greitai atmeta: grįžtame prie BMP ir bandome dar kartą.
+                        ScanLog.Write($"Perdavimas #{n}: PNG atmestas per {sw.ElapsedMilliseconds} ms (0x{HResult(ex):X8} {ex.Message}), bandoma BMP");
+                        usePng = false;
+                        SetProp(item.Properties, IPA_COMPRESSION, 0, "elementas");
+                        SetProp(item.Properties, IPA_FORMAT, FormatBmp, "elementas");
+                        n--;
+                        continue;
+                    }
+                    catch (Exception ex) when (useFeeder && pages.Count > 0)
+                    {
+                        // Kai kurios tvarkyklės (pvz., Microsoft WSD) po paskutinio lapo arba nutrūkus darbui
+                        // grąžina bendrą klaidą (0x80004005) vietoj „tiektuvas tuščias“. Atskirti neįmanoma,
+                        // todėl laikome tai darbo pabaiga ir išsaugome tai, kas jau nuskenuota.
+                        ScanLog.Write($"Perdavimas #{n}: klaida 0x{HResult(ex):X8} ({ex.Message}) po {sw.ElapsedMilliseconds} ms. " +
+                                      $"Laikoma tiektuvo darbo pabaiga, išsaugoma lapų: {pages.Count}");
+                        result.Warnings.Add($"Nuskenuota lapų: {pages.Count}. Skeneris darbą užbaigė su klaida " +
+                                            "(tai būdinga kai kurioms tinklo tvarkyklėms). Patikrinkite, ar nuskenuoti visi lapai.");
+                        break;
+                    }
                     if (img == null)
                     {
                         ScanLog.Write($"Perdavimas #{n}: atšaukta (grąžinta null) po {sw.ElapsedMilliseconds} ms");
                         break;
                     }
-                    LogImage(n, img, sw.ElapsedMilliseconds, dpi, expectedW, expectedH);
-                    pages.Add(ToPage(img, dpi));
+                    LogImage(n, img, sw.ElapsedMilliseconds, actualDpi, expectedW, expectedH);
+                    byte[] data = (byte[])img.FileData.BinaryData;
+                    ScanLog.Write($"  Gauta duomenų: {data.Length / 1024.0:N0} KB ({(usePng ? "PNG" : "BMP")})");
+                    pages.Add(ToPage(data, actualDpi));
                     if (!useFeeder) break;
                 }
 
                 LogKeyProps("Elementas PO skenavimo", item.Properties);
                 ScanLog.Write($"Skenavimas baigtas, lapų: {pages.Count}");
-                return pages;
+                return result;
             }
             catch (Exception ex)
             {
                 ScanLog.Write($"KLAIDA etape „{stage}“: 0x{HResult(ex):X8} {ex.Message} (jau nuskenuota lapų: {pages.Count})");
+                if (pages.Count > 0)
+                {
+                    // Neprarandame jau nuskenuotų lapų
+                    result.Warnings.Add($"Skenavimas nutrūko: {Describe(ex)} Išsaugoti jau nuskenuoti lapai: {pages.Count}.");
+                    return result;
+                }
                 throw;
             }
             finally
@@ -279,9 +444,13 @@ namespace OfflineScan
                     ScanLog.Write("Atšaukta (grąžinta null)");
                     return null;
                 }
-                int dpi = Convert.ToInt32(ToDouble(img.HorizontalResolution));
+                int reported = Convert.ToInt32(ToDouble(img.HorizontalResolution));
+                int width = SafeInt(() => img.Width);
+                int dpi = GuessDpi(width, reported);
+                if (dpi != reported)
+                    ScanLog.Write($"Vaizdo DPI ({reported}) netikėtinas {width} px pločiui, naudojamas {dpi} DPI (įvertinta pagal A4/Letter plotį)");
                 LogImage(1, img, sw.ElapsedMilliseconds, dpi, 0, 0);
-                return ToPage(img, dpi);
+                return ToPage((byte[])img.FileData.BinaryData, dpi);
             }
             catch (Exception ex)
             {
@@ -295,13 +464,24 @@ namespace OfflineScan
             }
         }
 
-        private static ScannedPage ToPage(dynamic img, int requestedDpi)
+        /// <param name="dpi">Tvarkyklės patvirtintas DPI. BMP antraštei nepasitikime:
+        /// pvz., Microsoft WSD tvarkyklė ten visada įrašo 96 DPI.</param>
+        private static ScannedPage ToPage(byte[] data, int dpi)
         {
-            byte[] data = (byte[])img.FileData.BinaryData;
             using var ms = new MemoryStream(data);
             using var tmp = new Bitmap(ms);
-            float dpi = tmp.HorizontalResolution >= 50 ? tmp.HorizontalResolution : requestedDpi;
-            return ScannedPage.FromImage(tmp, dpi);
+            float useDpi = dpi >= 50 ? dpi : (tmp.HorizontalResolution >= 50 ? tmp.HorizontalResolution : 200);
+            return ScannedPage.FromImage(tmp, useDpi);
+        }
+
+        /// <summary>Jei vaizdo DPI akivaizdžiai neteisingas (lapas būtų platesnis nei ~37 cm), įvertina DPI pagal lapo plotį.</summary>
+        private static int GuessDpi(int widthPx, int reported)
+        {
+            if (widthPx <= 0) return reported >= 50 ? reported : 200;
+            if (reported >= 50 && widthPx / (double)reported <= 14.5) return reported;
+            double estimate = widthPx / 8.5;
+            int[] standard = { 75, 100, 150, 200, 240, 300, 400, 600, 1200 };
+            return standard.OrderBy(v => Math.Abs(v - estimate)).First();
         }
 
         // ---------- žurnalo pagalbinės ----------
@@ -378,7 +558,7 @@ namespace OfflineScan
             double hr = SafeDouble(() => img.HorizontalResolution), vr = SafeDouble(() => img.VerticalResolution);
             ScanLog.Write($"Perdavimas #{n} baigtas per {ms} ms: {w} x {h} px, {hr:0.#} x {vr:0.#} DPI");
             if (hr > 0 && Math.Abs(hr - dpi) > 1)
-                ScanLog.Write($"  DĖMESIO: gautas DPI ({hr:0.#}) nesutampa su prašytu ({dpi})");
+                ScanLog.Write($"  Pastaba: vaizdo antraštėje {hr:0.#} DPI, PDF'ui naudojamas {dpi} DPI");
             if (expectedW > 0 && w > 0 && w < expectedW * 0.95)
                 ScanLog.Write($"  DĖMESIO: vaizdas siauresnis nei tikėtasi ({w} < {expectedW} px), galimas apkarpymas");
             if (expectedH > 0 && h > 0 && h < expectedH * 0.95)
@@ -467,6 +647,62 @@ namespace OfflineScan
                 if (Convert.ToInt32(p.PropertyID) == id) return p;
             }
             return null;
+        }
+
+        /// <summary>Leistinos sveikųjų skaičių reikšmės (iš sąrašo arba iš rėžio pagal kandidatus).</summary>
+        private static List<int> ReadAllowedInts(dynamic props, int id, int[] candidates)
+        {
+            var result = new List<int>();
+            dynamic? p = FindProp(props, id);
+            if (p == null) return result;
+            int sub = SafeInt(() => p.SubType);
+            try
+            {
+                if (sub == 2)
+                {
+                    dynamic v = p.SubTypeValues;
+                    int c = Convert.ToInt32(v.Count);
+                    for (int i = 1; i <= c; i++)
+                    {
+                        int x = ToIntOr((object?)v[i], -1);
+                        if (x >= 0) result.Add(x);
+                    }
+                }
+                else if (sub == 1)
+                {
+                    int min = SafeInt(() => p.SubTypeMin), max = SafeInt(() => p.SubTypeMax), step = SafeInt(() => p.SubTypeStep);
+                    foreach (int c in candidates)
+                        if (c >= min && c <= max && (step <= 1 || (c - min) % step == 0)) result.Add(c);
+                }
+                else
+                {
+                    int cur = ToIntOr((object?)p.Value, -1);
+                    if (cur >= 0) result.Add(cur);
+                }
+            }
+            catch { }
+            return result.Distinct().OrderBy(x => x).ToList();
+        }
+
+        /// <summary>Ar reikšmė AIŠKIAI yra leistinų sąraše (nežinoma = ne).</summary>
+        private static bool ListContains(dynamic props, int id, int value)
+        {
+            dynamic? p = FindProp(props, id);
+            if (p == null) return false;
+            if (SafeInt(() => p.SubType) != 2) return false;
+            List<int> allowed = ReadAllowedInts(props, id, new[] { value });
+            return allowed.Contains(value);
+        }
+
+        /// <summary>Ar savybė leidžia reikšmę. Jei nežinoma, laikoma, kad leidžia.</summary>
+        private static bool ListAllows(dynamic props, int id, int value)
+        {
+            dynamic? p = FindProp(props, id);
+            if (p == null) return true;
+            int sub = SafeInt(() => p.SubType);
+            if (sub != 1 && sub != 2) return true;
+            List<int> allowed = ReadAllowedInts(props, id, new[] { value });
+            return allowed.Count == 0 || allowed.Contains(value);
         }
 
         private static object? GetProp(dynamic props, int id)

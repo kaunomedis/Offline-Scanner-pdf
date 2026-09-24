@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -8,5 +8,9 @@
     <AssemblyName>OfflineScan</AssemblyName>
     <RootNamespace>OfflineScan</RootNamespace>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>scan.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="scan.ico" />
+  </ItemGroup>
 </Project>
