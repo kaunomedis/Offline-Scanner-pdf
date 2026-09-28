@@ -15,7 +15,7 @@ OfflineScan is a small, no-nonsense Windows program for one everyday job: put in
 
 It is a workhorse, not a showcase. There are no animations, no themes, no wizards and no "smart" features. There is a scanner, a list of pages and a *Save PDF* button.
 
-> **Note:** the user interface is currently in **Lithuanian**, as the program was built primarily for accountants in Lithuania. Button names are given below in English with the Lithuanian label in brackets.
+> **Note:** the user interface is in **Lithuanian**, as the program was built primarily for accountants in Lithuania. Button names below are given in English with the Lithuanian label in brackets.
 
 ---
 
@@ -28,9 +28,7 @@ Modern scanner software has become surprisingly hard to use for a task that used
 - **Online-only.** Many apps stop working when the computer is offline or the vendor's servers are unavailable.
 - **No transparency.** It is often unclear what the software sends, where, and why.
 
-For an accountant or bookkeeper who just needs to scan a stack of receipts before the end of the month, none of this is acceptable.
-
-OfflineScan takes the opposite approach:
+For an accountant who just needs to scan a stack of receipts before the end of the month, none of this is acceptable. OfflineScan takes the opposite approach:
 
 | | OfflineScan |
 |---|---|
@@ -49,21 +47,24 @@ OfflineScan takes the opposite approach:
 - **Small offices** that want one simple tool on every PC instead of a different vendor app per scanner.
 - **Anyone** who wants to scan documents without handing personal or company data to a third-party service.
 
-No technical knowledge is needed to use it. If you can use a scanner's lid, you can use OfflineScan.
+No technical knowledge is needed. If you can lift a scanner lid, you can use OfflineScan.
 
 ---
 
 ## Features
 
-- **Scan from any WIA-compatible scanner**: USB or network, flatbed or automatic document feeder (ADF). This covers most scanners and multifunction printers from HP, Canon, Epson, Brother, Lexmark, Xerox and others.
-- **Page buffer**: scan as many times as you need. Pages are collected in a list until you save.
+- **Any WIA-compatible scanner**: USB or network, flatbed or automatic document feeder (ADF). This covers most scanners and multifunction printers from HP, Canon, Epson, Brother, Lexmark, Xerox and others.
+- **Multi-page ADF scanning**: the whole stack in the feeder is scanned in one job, page by page, until the feeder is empty.
+- **Settings adapted to each scanner**: when you select a scanner, the program reads which resolutions and colour modes it actually supports and offers only those. No more silently cropped pages because of an unsupported DPI.
+- **Page buffer**: scan as many times as you need, from the flatbed and the feeder. Pages are collected in a list until you save.
 - **Basic page editing**: move pages up and down, rotate 90°, delete, clear all.
 - **Import images**: add JPG, PNG, BMP or TIFF files (including multi-page TIFF) to the same document.
-- **Direct PDF export**: one click, one multi-page PDF. The page size in the PDF matches the real physical size of the scanned paper.
-- **Print**: send pages to any printer, including *Microsoft Print to PDF*.
-- **Adjustable settings**: resolution (150–600 DPI), colour / greyscale / black-and-white, A4 / Letter / full scanner area, JPEG quality.
-- **Busy-scanner handling**: if the scanner is still returning its carriage or feeding paper, the program waits and retries instead of failing immediately.
-- **Diagnostic log**: optional, plain-text, stored next to the program. Useful when a particular scanner driver misbehaves.
+- **Direct PDF export**: one click, one multi-page PDF. The page size in the PDF matches the real physical size of the paper (e.g. A4 = 210 × 297 mm).
+- **Print**: to any printer, including *Microsoft Print to PDF*.
+- **Faster network scanning**: if the scanner supports compressed transfer (PNG), the program uses it automatically, reducing the data sent over the network several times.
+- **Robust error handling**: waits and retries when the scanner is busy or warming up, keeps already scanned pages if a problem occurs mid-stack, and shows clear messages ("feeder is empty", "paper jam").
+- **Refresh button** (↻): releases all scanner connections and re-reads the scanner list, so most problems can be fixed without restarting the program.
+- **Diagnostic log**: optional plain-text log next to the program, useful when a particular scanner driver misbehaves.
 
 ---
 
@@ -79,6 +80,16 @@ No technical knowledge is needed to use it. If you can use a scanner's lid, you 
 
 No vendor software (HP Smart, HP Scan, etc.) is required. In most cases Windows installs a suitable driver automatically. Network scanners can be added through *Settings → Bluetooth & devices → Printers & scanners → Add device*.
 
+### Tested scanners
+
+| Scanner | Connection | Driver | Flatbed | ADF (multi-page) |
+|---|---|---|---|---|
+| HP LaserJet Pro MFP M225dw | Network | Microsoft WSD (built into Windows) | ✅ | ✅ |
+| HP LaserJet MFP M426fdn | Network | Microsoft WSD (built into Windows) | ✅ | ✅ |
+| Lexmark MX410de | Network | Lexmark WIA driver | ✅ | ✅ |
+
+Reports from other models are welcome. See [Diagnostic log](#diagnostic-log).
+
 ---
 
 ## Quick start
@@ -86,11 +97,11 @@ No vendor software (HP Smart, HP Scan, etc.) is required. In most cases Windows 
 1. Download `OfflineScan.exe` from the [Releases](../../releases) page, or [build it yourself](#building-from-source).
 2. Copy it anywhere: a folder on the PC, a network share, or a USB stick.
 3. Run it. Windows SmartScreen may warn about an unsigned program the first time. Click *More info → Run anyway*.
-4. Select your scanner, choose the settings, click **Scan** (*Skenuoti*).
-5. Repeat for more pages, then rotate or reorder them as needed.
+4. Select your scanner and settings. To use the document feeder, tick **Feeder (ADF)** (*Tiektuvas (ADF)*).
+5. Click **Scan** (*Skenuoti*). Repeat for more pages, then rotate or reorder them as needed.
 6. Click **Save PDF…** (*Išsaugoti PDF…*).
 
-That's it. Nothing is installed, nothing is registered, nothing is written to the Windows registry.
+Nothing is installed, nothing is registered, nothing is written to the Windows registry.
 
 ---
 
@@ -100,10 +111,10 @@ That's it. Nothing is installed, nothing is registered, nothing is written to th
 |---|---|---|---|
 | Invoices, contracts, letters | 200–300 DPI | Greyscale | Good readability, small files |
 | Receipts and till slips | 300 DPI | Greyscale | Thermal paper is faint. Greyscale keeps detail |
-| Documents with stamps or signatures in colour | 300 DPI | Colour | Larger files |
-| Plain typed text only | 300 DPI | Black & white | Smallest files |
+| Documents with coloured stamps or signatures | 300 DPI | Colour | Larger files, slower on some network scanners |
+| Plain typed text only | 300 DPI | Black & white | Smallest files (if the scanner supports this mode) |
 
-A JPEG quality of **75–85** gives a good balance between file size and readability. For documents you submit to tax authorities, 300 DPI greyscale is a safe default.
+A JPEG quality of **75–85** gives a good balance between file size and readability. For documents submitted to tax authorities, 300 DPI greyscale is a safe default.
 
 ---
 
@@ -111,7 +122,8 @@ A JPEG quality of **75–85** gives a good balance between file size and readabi
 
 OfflineScan is intentionally small and uses only what is already part of Windows.
 
-- **Scanning** uses **WIA (Windows Image Acquisition)**, the scanner interface built into Windows. The program talks to WIA through late-bound COM, so no extra libraries or COM references are needed.
+- **Flatbed scanning** uses the classic **WIA (Windows Image Acquisition)** automation interface through late-bound COM, so no extra libraries or COM references are needed.
+- **Feeder scanning** uses the native **WIA 2.0** interface (the same one used by *Windows Fax and Scan*). All pages are transferred in a single job, which is the only reliable way to scan a stack with many network scanners. It runs on a background thread so the window stays responsive. If WIA 2.0 cannot be used with a particular scanner, the program automatically falls back to the classic interface.
 - **PDF output** is produced by a built-in writer of about a hundred lines of code (`PdfWriter.cs`). Each page is stored as a JPEG image inside a standard PDF 1.4 file. There are no third-party PDF libraries, so there is nothing hidden to audit.
 - **All pages stay in memory** until you save. Nothing is uploaded, cached online or sent anywhere.
 
@@ -122,7 +134,8 @@ OfflineScan/
 ├── OfflineScan.csproj   Project file (.NET 8, Windows Forms)
 ├── Program.cs           Entry point
 ├── MainForm.cs          The single program window
-├── WiaScanner.cs        Scanner access through Windows WIA
+├── WiaScanner.cs        Scanner list, capabilities, flatbed scanning (classic WIA)
+├── WiaAdf2.cs           Multi-page feeder scanning (WIA 2.0)
 ├── ScannedPage.cs       One page in the buffer (image + DPI)
 ├── PdfWriter.cs         Minimal dependency-free PDF writer
 └── ScanLog.cs           Optional diagnostic log
@@ -166,9 +179,9 @@ Copy `OfflineScan.exe`, `OfflineScan.dll`, `OfflineScan.runtimeconfig.json` and 
 
 ## Diagnostic log
 
-If the **Log** (*Žurnalas*) checkbox is enabled, the program writes a plain-text log to a `Logs` folder next to the executable. If that location is read-only (for example, a write-protected USB stick), it falls back to `Documents\OfflineScan\Logs`.
+If the **Log** (*Žurnalas*) checkbox is enabled, the program writes a plain-text log to a `Logs` folder next to the executable. If that location is read-only (for example, a write-protected USB stick), it falls back to `Documents\OfflineScan\Logs`. Each program start creates a new log file.
 
-The log records which scanner items and settings the driver reports, which settings it accepted or rejected, how long each page took, and the exact error codes. It contains no document images.
+The log records which scanner items and settings the driver reports, which settings it accepted or rejected, how long each page took, how much data was received, and the exact error codes. It contains no document images.
 
 The **Diagnostics** (*Diagnostika*) button writes a full description of the selected scanner without scanning anything. If you report a problem with a specific scanner, please attach this log.
 
@@ -177,16 +190,18 @@ The **Diagnostics** (*Diagnostika*) button writes a full description of the sele
 ## Known limitations
 
 - **Windows only.** WIA is a Windows technology.
-- **Some ADF drivers behave inconsistently.** Depending on the scanner model and driver, feeder scanning may skip pages or report errors. The flatbed works reliably. Improving ADF support across different drivers is ongoing work, and diagnostic logs from real devices help a lot.
-- **No OCR.** PDFs contain images, not searchable text. Use a separate OCR tool if you need text search.
+- **Duplex (two-sided) scanning** is not yet available. The feeder scans the front side only.
+- **eSCL-only devices are not listed.** Some newer network printers appear in Windows only as eSCL ("AirScan") devices without a WIA driver. These are currently not shown in the scanner list.
+- **After the last sheet, the scanner tries to feed one more.** The program asks the scanner to scan until the feeder is empty, so the scanner only discovers the end of the stack by trying to pick up another sheet. This is normal and *Windows Fax and Scan* behaves the same way.
+- **Pages appear after the whole stack is scanned.** During feeder scanning, progress is shown in the status bar, and the page thumbnails appear when the job is finished.
+- **No OCR.** PDFs contain images, not searchable text.
 - **PDF pages are always JPEG images.** This keeps the writer simple and the files compact. It is not a PDF/A archival writer.
-- **Duplex scanning** is not yet exposed in the interface.
 
 ---
 
 ## Privacy
 
-OfflineScan makes **no network connections of any kind**. It does not check for updates, collect statistics, or contact any server. Scanned documents exist only in memory and in the PDF files you choose to save. You can verify this by reading the source code, which is short enough to review in an afternoon.
+OfflineScan makes **no internet connections of any kind**. It does not check for updates, collect statistics, or contact any server. Network scanners are reached only through the Windows scanner service on your local network, exactly as with *Windows Fax and Scan*. Scanned documents exist only in memory and in the PDF files you choose to save. You can verify all of this by reading the source code.
 
 ---
 
@@ -197,7 +212,7 @@ Bug reports, diagnostic logs from different scanners, and pull requests are welc
 When contributing, please keep the spirit of the project:
 
 - **No new runtime dependencies** unless there is a very strong reason.
-- **No network features.**
+- **No internet features.**
 - **No accounts, licensing checks or telemetry.**
 - **Keep the interface plain.** The target user is an accountant with a stack of receipts, not a power user.
 
@@ -233,9 +248,7 @@ Tai darbinis arkliukas, o ne demonstracija. Čia nėra animacijų, temų, vedli�
 - **Veikia tik prisijungus prie interneto.** Daug programų nustoja veikti, kai kompiuteris neturi interneto arba gamintojo serveriai nepasiekiami.
 - **Neaišku, ką jos daro.** Dažnai nežinia, kokius duomenis programa siunčia, kur ir kodėl.
 
-Apskaitininkei, kuriai mėnesio pabaigoje tiesiog reikia nuskenuoti krūvelę čekių, visa tai nepriimtina.
-
-OfflineScan eina priešingu keliu:
+Apskaitininkei, kuriai mėnesio pabaigoje tiesiog reikia nuskenuoti krūvelę čekių, visa tai nepriimtina. OfflineScan eina priešingu keliu:
 
 | | OfflineScan |
 |---|---|
@@ -260,14 +273,17 @@ Techninių žinių nereikia. Jei mokate atidaryti skenerio dangtį, mokėsite na
 
 ## Galimybės
 
-- **Skenavimas bet kuriuo WIA suderinamu skeneriu:** USB ar tinklo, per stiklą ar automatinį lapų tiektuvą (ADF). Tai apima daugumą HP, Canon, Epson, Brother, Lexmark, Xerox ir kitų gamintojų skenerių bei daugiafunkcinių įrenginių.
-- **Puslapių buferis:** skenuokite kiek reikia kartų. Puslapiai kaupiami sąraše, kol juos išsaugosite.
+- **Bet kuris WIA suderinamas skeneris:** USB ar tinklo, per stiklą ar automatinį lapų tiektuvą (ADF). Tai apima daugumą HP, Canon, Epson, Brother, Lexmark, Xerox ir kitų gamintojų skenerių bei daugiafunkcinių įrenginių.
+- **Kelių lapų skenavimas iš tiektuvo:** visa tiektuve esanti krūvelė nuskenuojama vienu darbu, lapas po lapo, kol tiektuvas ištuštėja.
+- **Nustatymai pagal konkretų skenerį:** pasirinkus skenerį, programa perskaito, kokius DPI ir spalvų režimus jis iš tikrųjų palaiko, ir siūlo tik juos. Nebėra tyliai apkarpytų lapų dėl nepalaikomo DPI.
+- **Puslapių buferis:** skenuokite kiek reikia kartų, ir nuo stiklo, ir iš tiektuvo. Puslapiai kaupiami sąraše, kol juos išsaugosite.
 - **Paprastas puslapių tvarkymas:** perkelti aukštyn ar žemyn, pasukti 90°, ištrinti, išvalyti viską.
 - **Paveikslėlių pridėjimas:** į tą patį dokumentą galima įkelti JPG, PNG, BMP ar TIFF failus (taip pat daugiapuslapius TIFF).
-- **Tiesioginis eksportas į PDF:** vienas paspaudimas, vienas kelių puslapių PDF failas. Puslapio dydis PDF'e atitinka tikrą nuskenuoto lapo dydį.
+- **Tiesioginis eksportas į PDF:** vienas paspaudimas, vienas kelių puslapių PDF failas. Puslapio dydis PDF'e atitinka tikrą lapo dydį (pvz., A4 = 210 × 297 mm).
 - **Spausdinimas:** į bet kurį spausdintuvą, taip pat į *Microsoft Print to PDF*.
-- **Nustatymai:** raiška (150–600 DPI), spalvotai, pilkai arba nespalvotai, A4 / Letter / visas skenerio plotas, JPEG kokybė.
-- **Užimto skenerio atpažinimas:** jei skeneris dar grąžina skenavimo galvutę ar traukia lapą, programa palaukia ir bando dar kartą, o ne iškart parodo klaidą.
+- **Greitesnis skenavimas per tinklą:** jei skeneris palaiko suspaustą perdavimą (PNG), programa jį naudoja automatiškai, ir per tinklą siunčiama kelis kartus mažiau duomenų.
+- **Patikimas klaidų valdymas:** kai skeneris užimtas ar šyla, programa palaukia ir bando dar kartą. Jei problema atsiranda krūvelės viduryje, jau nuskenuoti lapai išsaugomi. Pranešimai aiškūs: „tiektuve nėra lapų", „užstrigo popierius".
+- **Atnaujinimo mygtukas** (↻): atleidžia visus ryšius su skeneriais ir iš naujo surenka jų sąrašą, todėl dauguma problemų išsprendžiamos neperkraunant programos.
 - **Diagnostinis žurnalas:** neprivalomas, paprasto teksto, saugomas šalia programos. Praverčia, kai konkretaus skenerio tvarkyklė elgiasi keistai.
 
 ---
@@ -284,6 +300,16 @@ Techninių žinių nereikia. Jei mokate atidaryti skenerio dangtį, mokėsite na
 
 Gamintojų programų (HP Smart, HP Scan ir pan.) nereikia. Dažniausiai Windows tinkamą tvarkyklę įdiegia automatiškai. Tinklo skenerius galima pridėti per *Parametrai → Bluetooth ir įrenginiai → Spausdintuvai ir skeneriai → Pridėti įrenginį*.
 
+### Išbandyti skeneriai
+
+| Skeneris | Prijungimas | Tvarkyklė | Stiklas | ADF (keli lapai) |
+|---|---|---|---|---|
+| HP LaserJet Pro MFP M225dw | Tinklas | Microsoft WSD (Windows dalis) | ✅ | ✅ |
+| HP LaserJet MFP M426fdn | Tinklas | Microsoft WSD (Windows dalis) | ✅ | ✅ |
+| Lexmark MX410de | Tinklas | Lexmark WIA tvarkyklė | ✅ | ✅ |
+
+Laukiami pranešimai ir apie kitus modelius (žr. skyrių „Diagnostinis žurnalas").
+
 ---
 
 ## Kaip pradėti
@@ -291,11 +317,11 @@ Gamintojų programų (HP Smart, HP Scan ir pan.) nereikia. Dažniausiai Windows 
 1. Atsisiųskite `OfflineScan.exe` iš [Releases](../../releases) puslapio arba sukompiliuokite patys (žr. skyrių „Kompiliavimas iš kodo").
 2. Nukopijuokite failą bet kur: į aplanką kompiuteryje, bendrą tinklo aplanką ar USB laikmeną.
 3. Paleiskite. Pirmą kartą Windows SmartScreen gali įspėti apie nepasirašytą programą. Spauskite *Daugiau informacijos → Vis tiek paleisti*.
-4. Pasirinkite skenerį ir nustatymus, spauskite **Skenuoti**.
-5. Jei reikia, skenuokite daugiau lapų, pasukite ar sudėliokite juos reikiama tvarka.
+4. Pasirinkite skenerį ir nustatymus. Jei norite skenuoti iš tiektuvo, pažymėkite **Tiektuvas (ADF)**.
+5. Spauskite **Skenuoti**. Jei reikia, skenuokite daugiau lapų, pasukite ar sudėliokite juos reikiama tvarka.
 6. Spauskite **Išsaugoti PDF…**.
 
-Tai viskas. Niekas nediegiama, niekur neregistruojama, į Windows registrą nieko nerašoma.
+Niekas nediegiama, niekur neregistruojama, į Windows registrą nieko nerašoma.
 
 ---
 
@@ -305,8 +331,8 @@ Tai viskas. Niekas nediegiama, niekur neregistruojama, į Windows registrą niek
 |---|---|---|---|
 | Sąskaitos faktūros, sutartys, raštai | 200–300 DPI | Pilkai | Gerai įskaitoma, maži failai |
 | Kasos čekiai | 300 DPI | Pilkai | Terminis popierius blankus, pilkas režimas išsaugo detales |
-| Dokumentai su spalvotais antspaudais ar parašais | 300 DPI | Spalvotai | Didesni failai |
-| Tik spausdintas tekstas | 300 DPI | Nespalvotai | Mažiausi failai |
+| Dokumentai su spalvotais antspaudais ar parašais | 300 DPI | Spalvotai | Didesni failai, kai kurie tinklo skeneriai skenuoja lėčiau |
+| Tik spausdintas tekstas | 300 DPI | Nespalvotai | Mažiausi failai (jei skeneris palaiko šį režimą) |
 
 JPEG kokybė **75–85** yra geras kompromisas tarp failo dydžio ir įskaitomumo. Dokumentams, teikiamiems VMI, saugus pasirinkimas yra 300 DPI, pilkai.
 
@@ -318,7 +344,8 @@ JPEG kokybė **75–85** yra geras kompromisas tarp failo dydžio ir įskaitomum
 
 OfflineScan sąmoningai yra maža ir naudoja tik tai, kas jau yra Windows sistemoje.
 
-- **Skenavimas** vyksta per **WIA (Windows Image Acquisition)**, į Windows integruotą skenerių sąsają. Programa su WIA bendrauja per vėlyvojo susiejimo COM, todėl nereikia jokių papildomų bibliotekų.
+- **Skenavimas nuo stiklo** vyksta per klasikinę **WIA (Windows Image Acquisition)** sąsają, naudojant vėlyvojo susiejimo COM. Papildomų bibliotekų nereikia.
+- **Skenavimas iš tiektuvo** vyksta per **WIA 2.0** sąsają, tą pačią, kurią naudoja *Windows faksas ir skenavimas*. Visi lapai perduodami vienu darbu. Tai vienintelis patikimas būdas nuskenuoti krūvelę lapų su daugeliu tinklo skenerių. Skenavimas vyksta fone, todėl langas neužšąla. Jei su konkrečiu skeneriu WIA 2.0 panaudoti nepavyksta, programa automatiškai grįžta prie klasikinės sąsajos.
 - **PDF failą** kuria integruotas, maždaug šimto eilučių rašytojas (`PdfWriter.cs`). Kiekvienas puslapis įrašomas kaip JPEG paveikslėlis standartiniame PDF 1.4 faile. Trečiųjų šalių PDF bibliotekų nėra, todėl nėra ir nieko paslėpto.
 - **Visi puslapiai laikomi atmintyje**, kol juos išsaugosite. Niekas neįkeliama į internetą ir niekur nesiunčiama.
 
@@ -356,9 +383,9 @@ Nukopijuokite `OfflineScan.exe`, `OfflineScan.dll`, `OfflineScan.runtimeconfig.j
 
 ## Diagnostinis žurnalas
 
-Jei pažymėta varnelė **Žurnalas**, programa rašo paprasto teksto žurnalą į aplanką `Logs` šalia programos failo. Jei ten rašyti negalima (pvz., USB laikmena apsaugota nuo rašymo), naudojamas aplankas `Dokumentai\OfflineScan\Logs`.
+Jei pažymėta varnelė **Žurnalas**, programa rašo paprasto teksto žurnalą į aplanką `Logs` šalia programos failo. Jei ten rašyti negalima (pvz., USB laikmena apsaugota nuo rašymo), naudojamas aplankas `Dokumentai\OfflineScan\Logs`. Kiekvienas programos paleidimas kuria naują žurnalo failą.
 
-Žurnale fiksuojama, kokius elementus ir nustatymus praneša skenerio tvarkyklė, kuriuos nustatymus ji priėmė ar atmetė, kiek laiko užtruko kiekvienas lapas, ir tikslūs klaidų kodai. Nuskenuotų dokumentų vaizdų žurnale nėra.
+Žurnale fiksuojama, kokius elementus ir nustatymus praneša skenerio tvarkyklė, kuriuos nustatymus ji priėmė ar atmetė, kiek laiko užtruko kiekvienas lapas, kiek duomenų gauta, ir tikslūs klaidų kodai. Nuskenuotų dokumentų vaizdų žurnale nėra.
 
 Mygtukas **Diagnostika** surašo pilną pasirinkto skenerio aprašymą nieko neskenuodamas. Jei pranešate apie problemą su konkrečiu skeneriu, pridėkite šį žurnalą.
 
@@ -367,16 +394,18 @@ Mygtukas **Diagnostika** surašo pilną pasirinkto skenerio aprašymą nieko nes
 ## Žinomi apribojimai
 
 - **Veikia tik Windows.** WIA yra Windows technologija.
-- **Kai kurių skenerių tiektuvas (ADF) veikia nestabiliai.** Priklausomai nuo modelio ir tvarkyklės, skenuojant per tiektuvą gali būti praleidžiami lapai arba rodomos klaidos. Per stiklą skenuojama patikimai. Tiektuvo palaikymas tobulinamas, ir diagnostiniai žurnalai iš realių įrenginių labai padeda.
-- **Nėra teksto atpažinimo (OCR).** PDF failuose yra vaizdai, o ne tekstas, todėl juose negalima ieškoti žodžių. Jei to reikia, naudokite atskirą OCR programą.
+- **Dvipusis skenavimas** kol kas neprieinamas. Iš tiektuvo skenuojama tik priekinė lapo pusė.
+- **Įrenginiai, pasiekiami tik per eSCL, sąraše nerodomi.** Kai kurie naujesni tinklo spausdintuvai Windows sistemoje matomi tik kaip eSCL („AirScan") įrenginiai be WIA tvarkyklės. Kol kas jų skenerių sąraše nėra.
+- **Po paskutinio lapo skeneris bando įtraukti dar vieną.** Programa prašo skenuoti, kol tiektuvas ištuštės, todėl skeneris krūvelės pabaigą atpažįsta tik bandydamas paimti kitą lapą. Tai normalu, taip elgiasi ir *Windows faksas ir skenavimas*.
+- **Lapai sąraše atsiranda nuskenavus visą krūvelę.** Skenuojant iš tiektuvo, eiga rodoma būsenos juostoje, o lapų miniatiūros atsiranda darbo pabaigoje.
+- **Nėra teksto atpažinimo (OCR).** PDF failuose yra vaizdai, o ne tekstas.
 - **PDF puslapiai visada yra JPEG vaizdai.** Tai leidžia rašytoją išlaikyti paprastą, o failus kompaktiškus. Tai nėra PDF/A archyvinio formato rašytojas.
-- **Dvipusis skenavimas** vartotojo sąsajoje kol kas neįjungtas.
 
 ---
 
 ## Privatumas
 
-OfflineScan **nejungia jokių tinklo ryšių**. Ji netikrina atnaujinimų, nerenka statistikos ir nesikreipia į jokį serverį. Nuskenuoti dokumentai egzistuoja tik kompiuterio atmintyje ir tuose PDF failuose, kuriuos patys išsaugote. Tai galite patikrinti perskaitę programos kodą: jis toks trumpas, kad jį galima peržiūrėti per popietę.
+OfflineScan **nejungia jokių interneto ryšių**. Ji netikrina atnaujinimų, nerenka statistikos ir nesikreipia į jokį serverį. Tinklo skeneriai pasiekiami tik per Windows skenerių paslaugą vietiniame tinkle, lygiai taip pat kaip su *Windows faksas ir skenavimas*. Nuskenuoti dokumentai egzistuoja tik kompiuterio atmintyje ir tuose PDF failuose, kuriuos patys išsaugote. Visa tai galite patikrinti perskaitę programos kodą.
 
 ---
 
@@ -387,7 +416,7 @@ Laukiami pranešimai apie klaidas, diagnostiniai žurnalai iš įvairių skeneri
 Prisidėdami laikykitės projekto dvasios:
 
 - **Jokių naujų priklausomybių**, nebent tam yra labai svari priežastis.
-- **Jokių tinklo funkcijų.**
+- **Jokių interneto funkcijų.**
 - **Jokių paskyrų, licencijų tikrinimo ar duomenų rinkimo.**
 - **Paprasta sąsaja.** Tikslinė vartotoja yra apskaitininkė su krūvele čekių, o ne kompiuterių specialistė.
 
