@@ -52,6 +52,7 @@ namespace OfflineScan
             Width = 1150;
             Height = 780;
             StartPosition = FormStartPosition.CenterScreen;
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? Icon;
 
             FillDpi(DefaultDpi);
             FillModes(AllModes);
